@@ -1,0 +1,1175 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+<title>Simulador de Galpão</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: palco 3D tipo "mapa de dados" com HUD por cima; três painéis de vidro sobrepostos à base do palco (empilhados no celular).
+   Linguagem do vídeo de referência (rede luminosa, partículas, cards de vidro com gauges) traduzida para fundo claro. */
+:root{
+  --bg:#eef1f8;
+  --bg-2:#e3e8f6;
+  --glass:rgba(255,255,255,.72);
+  --glass-line:rgba(96,112,190,.18);
+  --ink:#141a3a;
+  --muted:#6b7398;
+  --magenta:#232a91;
+  --cyan:#0aa9cf;
+  --violet:#6a4cff;
+  --amber:#f0961a;
+  --track:rgba(106,76,255,.12);
+  --font-ui:"Manrope", "Segoe UI", system-ui, sans-serif;
+  --font-mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--ink);font-family:var(--font-ui)}
+.page{max-width:1280px;margin:0 auto;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:16px 28px;display:flex;flex-direction:column;gap:14px}
+
+.stage{position:relative;height:min(78vh,720px);min-height:420px;border-radius:20px;overflow:hidden;
+  background:
+    radial-gradient(70% 60% at 50% 45%, #ffffff 0%, rgba(255,255,255,0) 70%),
+    radial-gradient(40% 40% at 85% 15%, rgba(10,169,207,.12), rgba(10,169,207,0) 70%),
+    radial-gradient(45% 45% at 10% 90%, rgba(35,42,145,.10), rgba(35,42,145,0) 70%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+  border:1px solid var(--glass-line)}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+.glass{background:var(--glass);border:1px solid var(--glass-line);border-radius:16px;box-shadow:0 10px 30px rgba(40,50,120,.08), inset 0 1px 0 rgba(255,255,255,.8);-webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%)}
+
+.hud-top{position:absolute;top:16px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;pointer-events:none}
+.hud-top>*{pointer-events:auto}
+.brand{padding:12px 16px}
+.eyebrow{font:500 11px/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+h1{margin:6px 0 0;font-size:clamp(20px,2.6vw,28px);font-weight:800;letter-spacing:-.02em;line-height:1.1;text-wrap:balance}
+h1 b{background:linear-gradient(90deg,var(--magenta),var(--violet) 55%,var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent;font-variant-numeric:tabular-nums}
+
+.seg{display:flex;padding:4px;gap:4px}
+.seg button{font:500 13px/1 var(--font-mono);border:0;background:transparent;color:var(--ink);padding:10px 12px;border-radius:11px;cursor:pointer;font-variant-numeric:tabular-nums}
+.seg button[aria-pressed="true"]{background:var(--ink);color:#fff;box-shadow:0 4px 14px rgba(20,26,58,.25)}
+
+.toolbar{position:absolute;left:16px;top:112px;display:flex;flex-direction:column;gap:6px;padding:8px}
+.toolbar button,.toolbar label{font:600 12px/1 var(--font-ui);display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;border:0;background:transparent;color:var(--ink);cursor:pointer;user-select:none;white-space:nowrap}
+.toolbar button{background:linear-gradient(90deg,var(--magenta),var(--violet));color:#fff}
+.toolbar input{accent-color:var(--violet);margin:0}
+.toolbar label:hover{background:var(--track)}
+
+.legend{position:absolute;right:16px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:2px;font:400 11px/1.6 var(--font-mono);color:var(--muted);text-align:right;pointer-events:none}
+.legend b{color:var(--ink);font-weight:500}
+
+button:focus-visible,label:focus-within,input:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+
+.cards{display:grid;grid-template-columns:1.05fr 1fr 1.35fr;gap:14px;margin-top:-118px;position:relative;z-index:2;padding-inline:16px}
+.card{padding:16px 18px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.card-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card-h h2{margin:0;font-size:13px;font-weight:700;letter-spacing:.01em}
+.card-h span{font:400 11px var(--font-mono);color:var(--muted)}
+
+.bars{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;align-items:end}
+.bar{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.bar .track{width:100%;max-width:34px;height:74px;border-radius:9px;background:var(--track);position:relative;overflow:hidden}
+.bar .fill{position:absolute;left:0;right:0;bottom:0;border-radius:9px;transition:height .6s cubic-bezier(.2,.8,.2,1)}
+.bar .v{font:500 15px/1 var(--font-mono);font-variant-numeric:tabular-nums}
+.bar .k{font:500 10px/1.2 var(--font-ui);color:var(--muted);text-align:center}
+
+.gauge-wrap{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center}
+.gauge{position:relative;width:150px;max-width:100%}
+.gauge svg{display:block;width:100%;height:auto}
+.gauge .center{position:absolute;left:0;right:0;bottom:6px;text-align:center}
+.gauge .big{font:500 26px/1 var(--font-mono);font-variant-numeric:tabular-nums}
+.gauge .lbl{font:500 10px/1.4 var(--font-ui);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.kv{display:grid;gap:10px;min-width:0}
+.kv div{display:flex;flex-direction:column;gap:3px}
+.kv dt{font:500 10px/1 var(--font-ui);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.kv dd{margin:0;font:500 18px/1 var(--font-mono);font-variant-numeric:tabular-nums}
+.kv dd small{font-size:11px;color:var(--muted)}
+
+.params{display:grid;gap:9px}
+.prm{display:grid;grid-template-columns:96px 1fr 78px;align-items:center;gap:10px}
+.prm label{font:600 12px var(--font-ui)}
+.prm input[type=range]{width:100%;accent-color:var(--violet);margin:0}
+.num{display:flex;align-items:center;border:1px solid var(--glass-line);border-radius:8px;background:rgba(255,255,255,.8);padding:0 7px}
+.num input{width:100%;min-width:0;border:0;background:transparent;font:500 13px/1 var(--font-mono);color:var(--ink);padding:6px 0;outline:none;font-variant-numeric:tabular-nums}
+.num em{font:400 11px var(--font-mono);color:var(--muted);font-style:normal}
+#reset{font:600 11px/1 var(--font-ui);border:1px solid var(--glass-line);background:rgba(255,255,255,.7);color:var(--ink);padding:6px 10px;border-radius:8px;cursor:pointer}
+
+.note{font-size:12px;color:var(--muted);margin:4px 2px 0;max-width:80ch}
+
+.pdf-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:4px;border-top:1px dashed var(--glass-line)}
+.pdf-btn{font:700 13px/1 var(--font-ui);border:0;border-radius:10px;padding:11px 14px;cursor:pointer;color:#fff;background:var(--ink);box-shadow:0 6px 16px rgba(20,26,58,.22)}
+.pdf-btn[disabled]{opacity:.6;cursor:wait}
+.wa-btn{background:#232a91;box-shadow:0 8px 20px rgba(35,42,145,.28)}
+.pdf-msg a{color:#232a91;font-weight:600}
+html.embed .page{padding-block:8px 12px}
+html.embed .stage{height:min(72vh,640px)}
+.pdf-msg{font:400 11px/1.4 var(--font-ui);color:var(--muted);min-width:0;flex:1}
+.pdf-view{position:fixed;inset:0;z-index:50;background:rgba(20,26,58,.35);display:flex;align-items:center;justify-content:center;padding:calc(16px + env(safe-area-inset-top,0px)) max(16px, env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px, env(safe-area-inset-left,0px))}
+.pdf-box{width:min(1100px,100%);height:100%;display:flex;flex-direction:column;overflow:hidden;background:#fff}
+.pdf-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;font-size:13px;flex-wrap:wrap}
+.pdf-bar span{color:var(--muted);font-size:12px;flex:1;min-width:0}
+.pdf-bar button{font:600 12px var(--font-ui);border:1px solid var(--glass-line);background:#fff;border-radius:8px;padding:7px 12px;cursor:pointer;color:var(--ink)}
+#pdfFrame{flex:1;width:100%;border:0;background:#f4f5f8}
+
+@media (max-width:980px){
+  .cards{grid-template-columns:1fr 1fr;margin-top:12px;padding-inline:0}
+  .cards .card:last-child{grid-column:1 / -1}
+  .legend{display:none}
+}
+@media (max-width:620px){
+  .stage{height:62vh;min-height:380px}
+  .cards{grid-template-columns:1fr}
+  .toolbar{top:auto;bottom:12px;left:12px;right:12px;flex-direction:row;flex-wrap:wrap}
+  .hud-top{top:12px;left:12px;right:12px}
+  .brand{padding:10px 12px}
+  .seg button{padding:9px 9px;font-size:12px}
+  .prm{grid-template-columns:84px 1fr 72px}
+}
+@media (prefers-reduced-motion:reduce){.bar .fill{transition:none}}
+</style>
+</head>
+<body>
+
+<div class="page">
+  <section class="stage" aria-label="Modelo 3D do galpão">
+    <canvas id="c"></canvas>
+
+    <div class="hud-top">
+      <div class="brand glass">
+        <div class="eyebrow">Estrutura metálica · pórticos de aço</div>
+        <h1>Galpão <b id="titleSize">12 × 20 m</b></h1>
+      </div>
+      <div class="seg glass" role="group" aria-label="Tamanhos prontos">
+        <button id="b12" data-key="12x20" aria-pressed="true">12×20</button>
+        <button id="b15" data-key="15x30" aria-pressed="false">15×30</button>
+        <button id="b20" data-key="20x40" aria-pressed="false">20×40</button>
+      </div>
+    </div>
+
+    <div class="toolbar glass">
+      <button id="rebuild" type="button">▶ Montar de novo</button>
+      <label for="tRoof"><input type="checkbox" id="tRoof" checked> Telhado</label>
+      <label for="tWall"><input type="checkbox" id="tWall" checked> Mureta</label>
+      <label for="tDim"><input type="checkbox" id="tDim" checked> Cotas</label>
+      <label for="tSpin"><input type="checkbox" id="tSpin" checked> Girar</label>
+    </div>
+
+    <div class="legend" id="legend" aria-hidden="true"></div>
+  </section>
+
+  <section class="cards">
+    <div class="card glass">
+      <div class="card-h"><h2>Peças da estrutura</h2><span>quantidade</span></div>
+      <div class="bars" id="bars"></div>
+    </div>
+
+    <div class="card glass">
+      <div class="card-h"><h2>Medidas principais</h2><span id="areaTag">240 m²</span></div>
+      <div class="gauge-wrap">
+        <div class="gauge">
+          <svg viewBox="0 0 160 92" aria-hidden="true">
+            <defs>
+              <linearGradient id="gg" x1="0" x2="1">
+                <stop offset="0" stop-color="#0aa9cf"/>
+                <stop offset=".55" stop-color="#6a4cff"/>
+                <stop offset="1" stop-color="#232a91"/>
+              </linearGradient>
+            </defs>
+            <path d="M14 84 A66 66 0 0 1 146 84" fill="none" stroke="rgba(106,76,255,.12)" stroke-width="10" stroke-linecap="round"/>
+            <path id="gArc" d="M14 84 A66 66 0 0 1 146 84" fill="none" stroke="url(#gg)" stroke-width="10" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100"/>
+          </svg>
+          <div class="center"><div class="big" id="gVal">5,0</div><div class="lbl">pé-direito (m)</div></div>
+        </div>
+        <dl class="kv" id="kv"></dl>
+      </div>
+    </div>
+
+    <form class="card glass" id="custom" novalidate>
+      <div class="card-h"><h2>Parâmetros</h2><button type="button" id="reset">Restaurar padrão</button></div>
+      <div class="params" id="params"></div>
+      <div class="pdf-row">
+        <button type="button" id="waBtn" class="pdf-btn wa-btn">Solicitar orçamento no WhatsApp</button>
+        <button type="button" id="pdfBtn" class="pdf-btn staff" hidden>Gerar projeto (PDF)</button>
+        <span class="pdf-msg" id="pdfMsg" role="status" aria-live="polite">O projeto com estas medidas vai junto na mensagem para a Inbrasfer.</span>
+      </div>
+    </form>
+  </section>
+
+  <div class="pdf-view" id="pdfView" hidden>
+    <div class="pdf-box glass">
+      <div class="pdf-bar"><strong>Prévia do projeto</strong><span>Use o botão de download do visualizador para salvar.</span><button type="button" id="pdfClose">Fechar</button></div>
+      <iframe id="pdfFrame" title="Prévia do PDF"></iframe>
+    </div>
+  </div>
+
+  <p class="note">Pé-direito, espaçamento entre pórticos e inclinação vêm com valores sugeridos e podem ser ajustados em Parâmetros. O orçamento final é confirmado pela equipe da Inbrasfer.</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+(function(){
+const SIZES = {
+  "12x20": {W:12, L:20, H:5, B:5, S:10},
+  "15x30": {W:15, L:30, H:6, B:5, S:10},
+  "20x40": {W:20, L:40, H:7, B:5, S:10}
+};
+const PARAMS = [
+  {k:"W", label:"Largura", unit:"m", min:6, max:40, step:0.5},
+  {k:"L", label:"Comprimento", unit:"m", min:6, max:120, step:0.5},
+  {k:"H", label:"Pé-direito", unit:"m", min:3, max:14, step:0.5},
+  {k:"B", label:"Entre pórticos", unit:"m", min:3, max:10, step:0.5},
+  {k:"S", label:"Inclinação", unit:"%", min:5, max:30, step:1}
+];
+const COL = {magenta:0x232a91, cyan:0x0aa9cf, violet:0x6a4cff, amber:0xf0961a, ink:0x141a3a};
+const WALL_H = 1.2;
+const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const fmt = (n, d=2) => Number(n).toLocaleString("pt-BR", {maximumFractionDigits:d});
+
+// ---------- Cena ----------
+const canvas = document.getElementById("c");
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xeef1f8, 70, 260);
+const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 800);
+const controls = new THREE.OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI * 0.48;
+controls.minDistance = 8; controls.maxDistance = 320;
+controls.autoRotate = !reduce; controls.autoRotateSpeed = 0.5;
+
+// Texturas de brilho (halo radial)
+const glowCache = {};
+function glowTex(hex){
+  if(glowCache[hex]) return glowCache[hex];
+  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const g = c.getContext("2d");
+  const col = new THREE.Color(hex);
+  const rgb = `${Math.round(col.r*255)},${Math.round(col.g*255)},${Math.round(col.b*255)}`;
+  const grd = g.createRadialGradient(64,64,0,64,64,64);
+  grd.addColorStop(0, `rgba(255,255,255,1)`);
+  grd.addColorStop(0.18, `rgba(${rgb},0.95)`);
+  grd.addColorStop(0.45, `rgba(${rgb},0.28)`);
+  grd.addColorStop(1, `rgba(${rgb},0)`);
+  g.fillStyle = grd; g.fillRect(0,0,128,128);
+  const t = new THREE.CanvasTexture(c);
+  glowCache[hex] = t; return t;
+}
+const dotTex = (()=>{
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const g = c.getContext("2d");
+  const grd = g.createRadialGradient(32,32,0,32,32,32);
+  grd.addColorStop(0,"rgba(255,255,255,1)"); grd.addColorStop(.5,"rgba(255,255,255,.6)"); grd.addColorStop(1,"rgba(255,255,255,0)");
+  g.fillStyle = grd; g.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c);
+})();
+
+// Chão de pontos (grade de dados)
+(function groundDots(){
+  const pts = [], R = 140, s = 2;
+  for(let x=-R; x<=R; x+=s) for(let z=-R; z<=R; z+=s){ if(x*x+z*z < R*R) pts.push(x, 0, z); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+  const m = new THREE.PointsMaterial({color:0x8e98c9, size:0.14, map:dotTex, transparent:true, opacity:0.55, depthWrite:false});
+  scene.add(new THREE.Points(geo, m));
+})();
+
+// Partículas flutuando (poeira colorida do vídeo)
+const floatN = 420;
+const floatGeo = new THREE.BufferGeometry();
+const fPos = new Float32Array(floatN*3), fCol = new Float32Array(floatN*3), fSpd = new Float32Array(floatN);
+const palette = [COL.magenta, COL.amber, COL.cyan, COL.violet].map(h=>new THREE.Color(h));
+for(let i=0;i<floatN;i++){
+  fPos[i*3] = (Math.random()-0.5)*140; fPos[i*3+1] = Math.random()*30; fPos[i*3+2] = (Math.random()-0.5)*140;
+  const c = palette[i%4]; fCol[i*3]=c.r; fCol[i*3+1]=c.g; fCol[i*3+2]=c.b;
+  fSpd[i] = 0.4 + Math.random()*0.9;
+}
+floatGeo.setAttribute("position", new THREE.BufferAttribute(fPos, 3));
+floatGeo.setAttribute("color", new THREE.BufferAttribute(fCol, 3));
+const floatPts = new THREE.Points(floatGeo, new THREE.PointsMaterial({size:0.32, map:dotTex, vertexColors:true, transparent:true, opacity:0.75, depthWrite:false}));
+scene.add(floatPts);
+
+// Materiais da estrutura (estilo holográfico em fundo claro)
+const M = {
+  frame: new THREE.MeshBasicMaterial({color:COL.magenta}),
+  purlin: new THREE.MeshBasicMaterial({color:COL.cyan}),
+  girt: new THREE.MeshBasicMaterial({color:COL.violet}),
+  brace: new THREE.MeshBasicMaterial({color:COL.amber}),
+  base: new THREE.MeshBasicMaterial({color:COL.ink, transparent:true, opacity:0.75}),
+  wall: new THREE.MeshBasicMaterial({color:COL.violet, transparent:true, opacity:0.10, side:THREE.DoubleSide, depthWrite:false}),
+  wallEdge: new THREE.LineBasicMaterial({color:COL.violet, transparent:true, opacity:0.7}),
+  roof: new THREE.MeshBasicMaterial({color:COL.cyan, transparent:true, opacity:0.08, side:THREE.DoubleSide, depthWrite:false}),
+  roofRib: new THREE.LineBasicMaterial({color:COL.cyan, transparent:true, opacity:0.4}),
+  foot: new THREE.MeshBasicMaterial({color:COL.cyan, transparent:true, opacity:0.07, depthWrite:false}),
+  footEdge: new THREE.LineBasicMaterial({color:COL.cyan, transparent:true, opacity:0.9}),
+  net: new THREE.LineBasicMaterial({color:COL.magenta, transparent:true, opacity:0.28}),
+  dim: new THREE.LineBasicMaterial({color:COL.ink, transparent:true, opacity:0.75}),
+  scan: new THREE.MeshBasicMaterial({color:COL.cyan, transparent:true, opacity:0.12, side:THREE.DoubleSide, depthWrite:false})
+};
+
+const X = new THREE.Vector3(1,0,0);
+function member(a, b, h, w, mat){
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const len = dir.length(); dir.normalize();
+  const m = new THREE.Mesh(new THREE.BoxGeometry(len, h, w), mat);
+  m.position.copy(a).add(b).multiplyScalar(0.5);
+  m.quaternion.setFromUnitVectors(X, dir);
+  return m;
+}
+function node(p, hex, size){
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex(hex), transparent:true, depthWrite:false}));
+  s.position.copy(p); s.scale.set(size, size, 1);
+  return s;
+}
+function edgeBox(w, h, d, mat, edgeMat){
+  const g = new THREE.Group();
+  const geo = new THREE.BoxGeometry(w, h, d);
+  g.add(new THREE.Mesh(geo, mat));
+  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
+  return g;
+}
+function label(text){
+  const c = document.createElement("canvas"); const g = c.getContext("2d");
+  const fs = 56; g.font = `500 ${fs}px "JetBrains Mono", monospace`;
+  const w = Math.ceil(g.measureText(text).width) + 56; const h = fs + 36;
+  c.width = w; c.height = h;
+  g.font = `500 ${fs}px "JetBrains Mono", monospace`;
+  const r = h/2;
+  g.beginPath(); g.moveTo(r,2); g.lineTo(w-r,2); g.arc(w-r,r,r-2,-Math.PI/2,Math.PI/2); g.lineTo(r,h-2); g.arc(r,r,r-2,Math.PI/2,Math.PI*1.5); g.closePath();
+  g.fillStyle = "rgba(255,255,255,0.92)"; g.fill();
+  g.lineWidth = 3; g.strokeStyle = "rgba(106,76,255,0.55)"; g.stroke();
+  g.fillStyle = "#141a3a"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText(text, w/2, h/2 + 2);
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 4;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({map:t, depthTest:false, transparent:true}));
+  s.renderOrder = 20; s.userData.ownTex = true; s.userData.aspect = w/h;
+  return s;
+}
+function dimLine(a, b, text, sc, tickDir){
+  const g = new THREE.Group();
+  const t = tickDir.clone().multiplyScalar(0.45);
+  const geo = new THREE.BufferGeometry().setFromPoints([a, b, a.clone().sub(t), a.clone().add(t), b.clone().sub(t), b.clone().add(t)]);
+  g.add(new THREE.LineSegments(geo, M.dim));
+  const s = label(text); s.scale.set(sc*s.userData.aspect, sc, 1);
+  s.position.copy(a).add(b).multiplyScalar(0.5).add(new THREE.Vector3(0, sc*0.65, 0));
+  g.add(s); g.userData.label = s;
+  return g;
+}
+
+let model=null, dims=null, net=null, roofGroup=null, wallGroup=null, scanPlane=null;
+let parts=[], t0=0, buildDur=0, counts={}, curCfg=null;
+
+function disposeTree(o){
+  o.traverse(n=>{
+    if(n.geometry) n.geometry.dispose();
+    if(n.isSprite && n.userData.ownTex){ n.material.map.dispose(); }
+    if(n.isSprite) n.material.dispose();
+  });
+}
+function clearAll(){
+  [model, dims, net].forEach(o=>{ if(o){ scene.remove(o); disposeTree(o); } });
+  parts = [];
+}
+
+// Rede luminosa no chão (como o mapa do vídeo)
+function buildNet(W, L){
+  const g = new THREE.Group();
+  const n = 140, inner = Math.max(W, L)*0.75 + 4, outer = Math.max(W, L)*1.9 + 18;
+  const P = [];
+  let seed = Math.round(W*131 + L*17);
+  const rnd = () => (seed = (seed*16807) % 2147483647) / 2147483647;
+  for(let i=0;i<n;i++){
+    const a = rnd()*Math.PI*2, r = inner + Math.sqrt(rnd())*(outer-inner);
+    P.push(new THREE.Vector3(Math.cos(a)*r, 0.03, Math.sin(a)*r*0.85));
+  }
+  const seg = [];
+  P.forEach((p,i)=>{
+    const near = P.map((q,j)=>({j, d:p.distanceToSquared(q)})).filter(o=>o.j!==i).sort((a,b)=>a.d-b.d).slice(0,2);
+    near.forEach(o=>{ if(o.j>i || Math.random()<0.5) seg.push(p, P[o.j]); });
+  });
+  g.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(seg), M.net));
+  const pos = []; const col = [];
+  P.forEach((p,i)=>{ pos.push(p.x, p.y+0.02, p.z); const c = palette[i%4]; col.push(c.r,c.g,c.b); });
+  const pg = new THREE.BufferGeometry();
+  pg.setAttribute("position", new THREE.Float32BufferAttribute(pos,3));
+  pg.setAttribute("color", new THREE.Float32BufferAttribute(col,3));
+  g.add(new THREE.Points(pg, new THREE.PointsMaterial({size:0.9, map:dotTex, vertexColors:true, transparent:true, opacity:0.9, depthWrite:false})));
+  return g;
+}
+
+function build(cfg, animate){
+  clearAll();
+  curCfg = cfg;
+  const {W, L, H} = cfg;
+  const BAY = cfg.B, SLOPE = cfg.S/100;
+  const nF = Math.max(2, Math.round(L/BAY) + 1);
+  const ridge = H + (W/2)*SLOPE;
+  const prof = W >= 20 ? 0.5 : W >= 15 ? 0.42 : 0.36;
+  model = new THREE.Group(); roofGroup = new THREE.Group(); wallGroup = new THREE.Group();
+  const step = 0.08;
+  let d = 0;
+  const add = (obj, delay, parent) => { (parent||model).add(obj); parts.push({obj, delay, y0:obj.position.y}); };
+  const zs = []; for(let i=0;i<nF;i++) zs.push(-L/2 + i*(L/(nF-1)));
+
+  // Projeção da área no chão
+  const foot = new THREE.Mesh(new THREE.PlaneGeometry(W+2, L+2), M.foot);
+  foot.rotation.x = -Math.PI/2; foot.position.y = 0.02;
+  add(foot, 0);
+  const fe = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-W/2-1,0.04,-L/2-1), new THREE.Vector3(W/2+1,0.04,-L/2-1),
+    new THREE.Vector3(W/2+1,0.04,L/2+1), new THREE.Vector3(-W/2-1,0.04,L/2+1)]), M.footEdge);
+  add(fe, 0);
+  d = 0.25;
+
+  // Bases e pilares
+  zs.forEach((z,i)=>{
+    [-W/2, W/2].forEach(x=>{
+      const b = new THREE.Mesh(new THREE.BoxGeometry(prof*1.6, 0.2, prof*1.6), M.base);
+      b.position.set(x, 0.1, z); add(b, d + i*step*0.5);
+      add(node(new THREE.Vector3(x,0.15,z), COL.cyan, 1.1), d + i*step*0.5);
+    });
+  });
+  d += nF*step*0.5 + 0.15;
+  zs.forEach((z,i)=>{
+    [-W/2, W/2].forEach(x=>{
+      add(member(new THREE.Vector3(x,0.2,z), new THREE.Vector3(x,H,z), prof, prof*0.5, M.frame), d + i*step);
+    });
+  });
+  d += nF*step + 0.1;
+
+  // Vigas de cobertura + nós brilhantes
+  zs.forEach((z,i)=>{
+    const g = new THREE.Group();
+    const eL = new THREE.Vector3(-W/2,H,z), eR = new THREE.Vector3(W/2,H,z), r = new THREE.Vector3(0,ridge,z);
+    g.add(member(eL, r, prof*0.85, prof*0.5, M.frame));
+    g.add(member(eR, r, prof*0.85, prof*0.5, M.frame));
+    const hk = Math.min(1.6, W*0.1);
+    g.add(member(new THREE.Vector3(-W/2,H-0.9,z), new THREE.Vector3(-W/2+hk,H+hk*SLOPE-0.1,z), 0.1, prof*0.3, M.frame));
+    g.add(member(new THREE.Vector3(W/2,H-0.9,z), new THREE.Vector3(W/2-hk,H+hk*SLOPE-0.1,z), 0.1, prof*0.3, M.frame));
+    g.add(node(eL, COL.magenta, 1.4), node(eR, COL.magenta, 1.4), node(r, COL.amber, 1.6));
+    add(g, d + i*step);
+  });
+  d += nF*step + 0.1;
+
+  // Terças
+  const half = W/2;
+  const nP = Math.max(4, Math.round(half/1.5)) + 1;
+  for(let k=0;k<nP;k++){
+    const f = k/(nP-1);
+    [-1,1].forEach((s,si)=>{
+      const x = s*(half - f*half*0.98);
+      const y = H + (half-Math.abs(x))*SLOPE + prof*0.5 + 0.06;
+      add(member(new THREE.Vector3(x,y,-L/2-0.15), new THREE.Vector3(x,y,L/2+0.15), 0.12, 0.06, M.purlin), d + k*step*0.6 + si*0.03);
+    });
+  }
+  d += nP*step*0.6 + 0.1;
+
+  // Travessas laterais
+  let girts = 0;
+  [2.2, 3.6, 5.0].forEach((y,j)=>{
+    if(y > H - 0.6) return;
+    [-W/2 - prof*0.35, W/2 + prof*0.35].forEach(x=>{
+      add(member(new THREE.Vector3(x,y,-L/2), new THREE.Vector3(x,y,L/2), 0.06, 0.06, M.girt), d + j*0.1);
+      girts++;
+    });
+  });
+  d += 0.3;
+
+  // Contraventamento em X
+  [[zs[0], zs[1]], [zs[nF-2], zs[nF-1]]].forEach(([za,zb], j)=>{
+    [-W/2, W/2].forEach(x=>{
+      const g = new THREE.Group();
+      g.add(member(new THREE.Vector3(x,0.4,za), new THREE.Vector3(x,H-0.4,zb), 0.035, 0.035, M.brace));
+      g.add(member(new THREE.Vector3(x,0.4,zb), new THREE.Vector3(x,H-0.4,za), 0.035, 0.035, M.brace));
+      add(g, d + j*0.1);
+    });
+  });
+  d += 0.3;
+
+  // Mureta
+  const wt = 0.14, off = prof*0.5;
+  [[W+0.3, wt, 0, -L/2-off], [W+0.3, wt, 0, L/2+off], [wt, L, -W/2-off, 0], [wt, L, W/2+off, 0]].forEach((w,i)=>{
+    const b = edgeBox(w[0], WALL_H, w[1], M.wall, M.wallEdge);
+    b.position.set(w[2], WALL_H/2 + 0.05, w[3]);
+    add(b, d + i*0.07, wallGroup);
+  });
+  model.add(wallGroup);
+  d += 0.35;
+
+  // Telhado: vidro + nervuras
+  const ext = 0.4;
+  const slopeLen = Math.hypot(half+ext, (half+ext)*SLOPE);
+  const ang = Math.atan(SLOPE);
+  const topY = ridge + prof*0.5 + 0.14;
+  [-1,1].forEach((s,si)=>{
+    const g = new THREE.Group();
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(slopeLen, L+0.8), M.roof);
+    pl.rotation.x = -Math.PI/2;
+    g.add(pl);
+    const ribs = [];
+    const nR = Math.max(6, Math.round((L+0.8)/1.0));
+    for(let i=0;i<=nR;i++){
+      const z = -(L+0.8)/2 + i*(L+0.8)/nR;
+      ribs.push(new THREE.Vector3(-slopeLen/2, 0.01, z), new THREE.Vector3(slopeLen/2, 0.01, z));
+    }
+    ribs.push(new THREE.Vector3(-slopeLen/2,0.01,-(L+0.8)/2), new THREE.Vector3(-slopeLen/2,0.01,(L+0.8)/2));
+    ribs.push(new THREE.Vector3(slopeLen/2,0.01,-(L+0.8)/2), new THREE.Vector3(slopeLen/2,0.01,(L+0.8)/2));
+    g.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(ribs), M.roofRib));
+    g.rotation.z = -s*ang;
+    g.position.set(s*(slopeLen/2)*Math.cos(ang), topY - (slopeLen/2)*Math.sin(ang), 0);
+    add(g, d + si*0.15, roofGroup);
+  });
+  model.add(roofGroup);
+  d += 0.5;
+
+  // Plano de varredura (scanner) durante a montagem
+  scanPlane = new THREE.Mesh(new THREE.PlaneGeometry(W+4, L+4), M.scan);
+  scanPlane.rotation.x = -Math.PI/2;
+  scanPlane.userData.top = topY + 0.6;
+  model.add(scanPlane);
+
+  scene.add(model);
+  buildDur = d + 0.6;
+
+  // Cotas
+  dims = new THREE.Group();
+  const sc = Math.max(1.2, Math.max(W,L)/16);
+  const o = 2 + W*0.06;
+  dims.add(dimLine(new THREE.Vector3(-W/2,0.1,L/2+o), new THREE.Vector3(W/2,0.1,L/2+o), `${fmt(W)} m`, sc, new THREE.Vector3(0,0,1)));
+  dims.add(dimLine(new THREE.Vector3(W/2+o,0.1,-L/2), new THREE.Vector3(W/2+o,0.1,L/2), `${fmt(L)} m`, sc, new THREE.Vector3(1,0,0)));
+  const hd = dimLine(new THREE.Vector3(-W/2-o*0.7,0,L/2), new THREE.Vector3(-W/2-o*0.7,H,L/2), `${fmt(H)} m`, sc*0.85, new THREE.Vector3(1,0,0));
+  hd.userData.label.position.set(-W/2-o*0.7 - sc*1.3, H/2, L/2);
+  dims.add(hd);
+  dims.visible = document.getElementById("tDim").checked;
+  scene.add(dims);
+
+  net = buildNet(W, L);
+  scene.add(net);
+
+  roofGroup.visible = document.getElementById("tRoof").checked;
+  wallGroup.visible = document.getElementById("tWall").checked;
+
+  counts = {pilares:nF*2, vigas:nF*2, tercas:nP*2, travessas:girts, contraventos:8};
+  t0 = (animate && !reduce) ? performance.now() : -1e9;
+  updateHud(cfg, nF);
+}
+
+function frameCamera(cfg){
+  const R = Math.max(cfg.W, cfg.L);
+  camera.position.set(R*1.0, R*0.5 + cfg.H, R*1.15);
+  controls.target.set(0, cfg.H*0.4, 0);
+  controls.update();
+}
+
+const ease = p => 1 - Math.pow(1-p, 3);
+function animateParts(now){
+  const t = (now - t0)/1000;
+  for(const p of parts){
+    const k = Math.min(1, Math.max(0, (t - p.delay)/0.5));
+    p.obj.visible = k > 0;
+    p.obj.position.y = p.y0 + (1 - ease(k))*3.5;
+  }
+  if(scanPlane){
+    const k = Math.min(1, Math.max(0, t/buildDur));
+    scanPlane.visible = k > 0 && k < 1;
+    scanPlane.position.y = k * scanPlane.userData.top;
+  }
+}
+
+// ---------- HUD ----------
+function updateHud(cfg, nF){
+  const {W, L, H} = cfg;
+  const real = L/(nF-1);
+  document.getElementById("titleSize").textContent = `${fmt(W)} × ${fmt(L)} m`;
+  document.getElementById("areaTag").textContent = `${fmt(W*L,1)} m²`;
+  document.getElementById("gVal").textContent = fmt(H,1);
+  document.getElementById("gArc").setAttribute("stroke-dasharray", `${Math.round((H/14)*100)} 100`);
+  const ridge = H + W/2*cfg.S/100;
+  document.getElementById("kv").innerHTML = [
+    ["Vão livre", `${fmt(W)} <small>m</small>`],
+    ["Cumeeira", `${fmt(ridge,2)} <small>m</small>`],
+    ["Pórticos", `${nF} <small>a cada ${fmt(real,2)} m</small>`]
+  ].map(r=>`<div><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join("");
+
+  const bars = [
+    ["Pilares", counts.pilares, "var(--magenta)"],
+    ["Vigas", counts.vigas, "linear-gradient(0deg,var(--magenta),var(--violet))"],
+    ["Terças", counts.tercas, "var(--cyan)"],
+    ["Travessas", counts.travessas, "var(--violet)"],
+    ["Contra­ventos", counts.contraventos, "var(--amber)"]
+  ];
+  const max = Math.max(...bars.map(b=>b[1]), 1);
+  const el = document.getElementById("bars");
+  if(!el.children.length){
+    el.innerHTML = bars.map(b=>`<div class="bar"><div class="v">0</div><div class="track"><div class="fill" style="height:0;background:${b[2]}"></div></div><div class="k">${b[0]}</div></div>`).join("");
+  }
+  [...el.children].forEach((c,i)=>{
+    c.querySelector(".v").textContent = bars[i][1];
+    c.querySelector(".fill").style.height = `${Math.max(6, bars[i][1]/max*100)}%`;
+  });
+
+  document.getElementById("legend").innerHTML = [
+    ["Pórticos", "#232a91"], ["Terças", "#0aa9cf"], ["Travessas", "#6a4cff"], ["Contraventos", "#f0961a"]
+  ].map(r=>`<div><b style="color:${r[1]}">●</b> ${r[0]}</div>`).join("");
+}
+
+// Parâmetros (slider + número)
+const pBox = document.getElementById("params");
+pBox.innerHTML = PARAMS.map(p=>`
+  <div class="prm">
+    <label for="r${p.k}">${p.label}</label>
+    <input type="range" id="r${p.k}" min="${p.min}" max="${p.max}" step="${p.step}">
+    <span class="num"><input type="number" id="n${p.k}" inputmode="decimal" min="${p.min}" max="${p.max}" step="${p.step}" aria-label="${p.label} em ${p.unit}"><em>${p.unit}</em></span>
+  </div>`).join("");
+
+function fill(cfg){ PARAMS.forEach(p=>{ document.getElementById("r"+p.k).value = cfg[p.k]; document.getElementById("n"+p.k).value = cfg[p.k]; }); }
+function read(){
+  const cfg = {};
+  for(const p of PARAMS){
+    let v = parseFloat(String(document.getElementById("n"+p.k).value).replace(",", "."));
+    if(!isFinite(v)) return null;
+    cfg[p.k] = Math.min(p.max, Math.max(p.min, v));
+  }
+  return cfg;
+}
+function syncPresets(cfg){
+  let match = null;
+  for(const key in SIZES){ if(PARAMS.every(p=>SIZES[key][p.k]===cfg[p.k])) match = key; }
+  document.querySelectorAll(".seg button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.key===match ? "true":"false"));
+  if(match) current = match;
+}
+
+let current = "12x20", deb = null;
+pBox.addEventListener("input", e=>{
+  const id = e.target.id, k = id.slice(1);
+  if(id[0]==="r") document.getElementById("n"+k).value = e.target.value;
+  else if(e.target.value !== "") document.getElementById("r"+k).value = e.target.value;
+  clearTimeout(deb);
+  deb = setTimeout(()=>{
+    const cfg = read(); if(!cfg) return;
+    const sizeChanged = !curCfg || cfg.W!==curCfg.W || cfg.L!==curCfg.L;
+    syncPresets(cfg); build(cfg, false);
+    if(sizeChanged) frameCamera(cfg);
+  }, 140);
+});
+pBox.addEventListener("change", e=>{ if(e.target.type==="number"){ const c = read(); if(c) fill(c); } });
+document.getElementById("custom").addEventListener("submit", e=>e.preventDefault());
+
+document.querySelectorAll(".seg button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    current = b.dataset.key;
+    const cfg = Object.assign({}, SIZES[current]);
+    fill(cfg); syncPresets(cfg); build(cfg, true); frameCamera(cfg);
+  });
+});
+document.getElementById("reset").addEventListener("click", ()=>{
+  const cfg = Object.assign({}, SIZES[current]);
+  fill(cfg); syncPresets(cfg); build(cfg, true); frameCamera(cfg);
+});
+document.getElementById("rebuild").addEventListener("click", ()=>{ if(curCfg) build(curCfg, true); });
+document.getElementById("tRoof").addEventListener("change", e=>{ roofGroup.visible = e.target.checked; });
+document.getElementById("tWall").addEventListener("change", e=>{ wallGroup.visible = e.target.checked; });
+document.getElementById("tDim").addEventListener("change", e=>{ dims.visible = e.target.checked; });
+const spin = document.getElementById("tSpin");
+spin.checked = !reduce;
+spin.addEventListener("change", e=>{ controls.autoRotate = e.target.checked; });
+controls.addEventListener("start", ()=>{ controls.autoRotate = false; spin.checked = false; });
+
+// ---------- Projeto em PDF ----------
+function geom(cfg){
+  const W = cfg.W, L = cfg.L, H = cfg.H, S = cfg.S/100;
+  const nF = Math.max(2, Math.round(L/cfg.B) + 1);
+  const bay = L/(nF-1);
+  const half = W/2, ridge = H + half*S;
+  const nPside = Math.max(4, Math.round(half/1.5)) + 1;
+  const girtY = [2.2, 3.6, 5.0].filter(y => y <= H - 0.6);
+  const prof = W >= 20 ? 0.5 : W >= 15 ? 0.42 : 0.36;
+  const hk = Math.min(1.6, W*0.1);
+  const purlinX = [];
+  for(let k=0;k<nPside;k++){ const f = k/(nPside-1); purlinX.push(-(half - f*half*0.98)); purlinX.push(half - f*half*0.98); }
+  return {W, L, H, S, Sp:cfg.S, nF, bay, half, ridge, nPside, girtY, prof, hk, purlinX,
+    rafter: Math.hypot(half, half*S),
+    haunch: Math.hypot(hk, 0.8 + hk*S),
+    slopeLen: Math.hypot(half+0.4, (half+0.4)*S),
+    brace: Math.hypot(bay, H-0.8)};
+}
+const SCALES = [20,25,50,75,100,125,150,200,250,300,400,500,750,1000];
+function pickScale(spanW, spanH, boxW, boxH){
+  for(const n of SCALES){ const k = 1000/n; if(spanW*k <= boxW && spanH*k <= boxH) return n; }
+  return 1000;
+}
+const m2 = n => fmt(n, 2);
+
+function buildPdf(cfg){
+  const g = geom(cfg);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:"landscape", unit:"mm", format:"a3"});
+  const today = new Date().toLocaleDateString("pt-BR");
+  const INK = [20,26,58], GRAY = [150,155,175], LIGHT = [205,208,220];
+
+  const lw = (w, c) => { doc.setLineWidth(w); doc.setDrawColor(...(c || INK)); };
+  const dash = p => doc.setLineDashPattern(p || [], 0);
+  const ln = (x1,y1,x2,y2) => doc.line(x1,y1,x2,y2);
+  const txt = (s, x, y, o) => doc.text(String(s), x, y, o || {});
+  const font = (size, bold, c) => { doc.setFont("helvetica", bold ? "bold" : "normal"); doc.setFontSize(size); doc.setTextColor(...(c || INK)); };
+
+  // Cotas
+  function tick(x, y){ ln(x-1, y+1, x+1, y-1); }
+  function dimH(xa, xb, y, text, yFrom){
+    lw(0.18);
+    if(yFrom !== undefined){ const s = Math.sign(y - yFrom) || 1; ln(xa, yFrom + s*1, xa, y + s*1.5); ln(xb, yFrom + s*1, xb, y + s*1.5); }
+    ln(xa - 1.5, y, xb + 1.5, y); tick(xa, y); tick(xb, y);
+    font(7); txt(text, (xa+xb)/2, y - 1.2, {align:"center"});
+  }
+  function dimV(ya, yb, x, text, xFrom, right){
+    lw(0.18);
+    if(xFrom !== undefined){ const s = Math.sign(x - xFrom) || 1; ln(xFrom + s*1, ya, x + s*1.5, ya); ln(xFrom + s*1, yb, x + s*1.5, yb); }
+    ln(x, ya - 1.5, x, yb + 1.5); tick(x, ya); tick(x, yb);
+    font(7);
+    const tw2 = doc.getTextWidth(text) / 2, my = (ya+yb)/2 + tw2;
+    if(right) txt(text, x + 3.2, my, {angle:90});
+    else txt(text, x - 1.2, my, {angle:90});
+  }
+  function bubble(x, y, label){ lw(0.25); doc.setFillColor(255,255,255); doc.circle(x, y, 2.6, "FD"); font(7, true); txt(label, x, y + 0.9, {align:"center"}); }
+  function viewTitle(x, y, title, scale){
+    font(10, true); txt(title, x, y);
+    const w = doc.getTextWidth(title);
+    lw(0.5); ln(x, y + 1.4, x + w, y + 1.4);
+    font(7.5, false, [90,96,125]); txt(scale ? `ESCALA 1:${scale} (A3)` : "SEM ESCALA", x, y + 5.2);
+  }
+  function hatchRect(x, y, w, h, step){
+    lw(0.1, GRAY);
+    for(let t = -h; t < w; t += step){
+      const len = Math.min(w - Math.max(0,t), h - Math.max(0,-t));
+      ln(x + Math.max(0,t), y + h - Math.max(0,-t), x + Math.max(0,t) + len, y + h - Math.max(0,-t) - len);
+    }
+  }
+
+  // Moldura
+  function frame(sheet, total){
+    lw(0.6); doc.rect(8, 8, 404, 281);
+    lw(0.2); doc.rect(10, 10, 400, 277);
+    font(7, false, [90,96,125]); txt(`Folha ${sheet}/${total}`, 408, 285, {align:"right"});
+  }
+
+  // ===== Folha 1: desenhos =====
+  frame(1, 2);
+  const zs = []; for(let i=0;i<g.nF;i++) zs.push(-g.L/2 + i*g.bay);
+  const wallOff = g.prof/2;
+
+  // --- Planta baixa ---
+  {
+    const bx = 16, by = 16, bw = 240, bh = 156;
+    const n = pickScale(g.L + 10, g.W + 11, bw - 10, bh - 22);
+    const k = 1000/n;
+    viewTitle(bx, by + 4, "PLANTA BAIXA - LOCAÇÃO DOS PILARES", n);
+    const cx = bx + bw/2, cy = by + 14 + (bh - 14)/2;
+    const P = (z, x) => [cx + z*k, cy + x*k];
+    // mureta (faces interna e externa)
+    const wo = g.half + wallOff + 0.07, wi = g.half + wallOff - 0.07, lo = g.L/2 + wallOff + 0.07, li = g.L/2 + wallOff - 0.07;
+    lw(0.35); doc.rect(cx - lo*k, cy - wo*k, 2*lo*k, 2*wo*k);
+    lw(0.2); doc.rect(cx - li*k, cy - wi*k, 2*li*k, 2*wi*k);
+    // projeção das terças
+    lw(0.12, LIGHT); dash([1.5, 1]);
+    g.purlinX.forEach(x => { const [x1,y1] = P(-g.L/2, x), [x2] = P(g.L/2, x); ln(x1, y1, x2, y1); });
+    dash();
+    // eixos
+    lw(0.12, GRAY); dash([4, 1, 0.6, 1]);
+    const ext = 1.8;
+    zs.forEach(z => { const [x, y1] = P(z, -g.half - ext), [, y2] = P(z, g.half + ext); ln(x, y1, x, y2); });
+    [-g.half, g.half].forEach(x => { const [x1, y] = P(-g.L/2 - ext, x), [x2] = P(g.L/2 + ext, x); ln(x1, y, x2, y); });
+    dash();
+    zs.forEach((z,i) => { const [x, y] = P(z, -g.half - ext); bubble(x, y - 2.8, String(i+1)); });
+    [["A", -g.half], ["B", g.half]].forEach(([lab, x]) => { const [px, py] = P(-g.L/2 - ext, x); bubble(px - 2.8, py, lab); });
+    // pilares
+    doc.setFillColor(...INK);
+    zs.forEach(z => [-g.half, g.half].forEach(x => {
+      const w = Math.max(1.1, g.prof*0.5*k), h = Math.max(1.6, g.prof*k);
+      const [px, py] = P(z, x); doc.rect(px - w/2, py - h/2, w, h, "F");
+    }));
+    // cotas
+    const yTop = cy - (g.half + ext)*k - 9;
+    for(let i=0;i<g.nF-1;i++){ const [xa] = P(zs[i], 0), [xb] = P(zs[i+1], 0); dimH(xa, xb, cy + (wo*k) + 7, `${m2(g.bay)}`, cy + wo*k); }
+    { const [xa] = P(-g.L/2, 0), [xb] = P(g.L/2, 0); dimH(xa, xb, cy + wo*k + 14, `${m2(g.L)} m (eixo a eixo)`, cy + wo*k); }
+    { const [, ya] = P(0, -g.half), [, yb] = P(0, g.half); const xr = cx + lo*k; dimV(ya, yb, xr + 9, `${m2(g.W)} m`, xr, true); }
+    font(8, true); txt(`ÁREA: ${m2(g.W)} x ${m2(g.L)} = ${m2(g.W*g.L)} m²`, cx, cy + 1.2, {align:"center"});
+    font(6.5, false, [90,96,125]); txt("linhas tracejadas claras: projeção das terças", cx, cy + 5, {align:"center"});
+  }
+
+  // --- Pórtico típico ---
+  {
+    const bx = 266, by = 16, bw = 140, bh = 156;
+    const n = pickScale(g.W + 9, g.ridge + 6, bw - 6, bh - 30);
+    const k = 1000/n;
+    viewTitle(bx, by + 4, "PÓRTICO TÍPICO - VISTA FRONTAL", n);
+    const cx = bx + bw/2, gy = by + bh - 20;
+    const P = (x, y) => [cx + x*k, gy - y*k];
+    // terreno
+    lw(0.35); { const [x1] = P(-g.half - 3, 0), [x2] = P(g.half + 3, 0); ln(x1, gy, x2, gy); lw(0.12, GRAY); for(let x = x1; x < x2; x += 2.5) ln(x, gy, x - 1.5, gy + 1.5); }
+    // mureta
+    [-1, 1].forEach(s => {
+      const xc = s*(g.half + wallOff);
+      const [x1, y1] = P(xc - 0.07, 1.2), [x2] = P(xc + 0.07, 0);
+      lw(0.25); doc.rect(x1, y1, Math.max(0.6, x2 - x1), 1.2*k);
+    });
+    // pilares e chapa de base
+    [-1, 1].forEach(s => {
+      const xc = s*g.half;
+      const [bx1, by1] = P(xc - g.prof*0.8, 0.2);
+      lw(0.3); doc.rect(bx1, by1, g.prof*1.6*k, 0.2*k);
+      const [x1, y1] = P(xc - g.prof/2, g.H);
+      lw(0.35); doc.rect(x1, y1, Math.max(1, g.prof*k), (g.H - 0.2)*k);
+      // travessas
+      g.girtY.forEach(y => { const [tx, ty] = P(xc + s*(g.prof/2 + 0.06) - 0.03, y + 0.03); doc.setFillColor(...INK); doc.rect(tx, ty, Math.max(0.8, 0.06*k), Math.max(0.8, 0.06*k), "F"); });
+    });
+    // vigas (banda)
+    const d = g.prof*0.85;
+    [-1, 1].forEach(s => {
+      const [ex, ey] = P(s*g.half, g.H), [rx, ry] = P(0, g.ridge);
+      lw(0.35); ln(ex, ey - d/2*k, rx, ry - d/2*k); ln(ex, ey + d/2*k, rx, ry + d/2*k);
+      // mísula
+      lw(0.25); const [m1x, m1y] = P(s*g.half, g.H - 0.9), [m2x, m2y] = P(s*(g.half - g.hk), g.H + g.hk*g.S - 0.1); ln(m1x, m1y, m2x, m2y);
+    });
+    { const [rx, ry] = P(0, g.ridge); lw(0.35); ln(rx, ry - d/2*k, rx, ry + d/2*k); }
+    // terças
+    doc.setFillColor(...INK);
+    g.purlinX.forEach(x => { const y = g.H + (g.half - Math.abs(x))*g.S + g.prof/2 + 0.06; const [px, py] = P(x, y + 0.15); const s = Math.max(0.8, 0.15*k); doc.rect(px - s/2, py, s, s, "F"); });
+    // telha
+    lw(0.2, GRAY);
+    [-1, 1].forEach(s => { const yE = g.H + g.prof/2 + 0.25 - 0.4*g.S, [x1, y1] = P(s*(g.half + 0.4), yE), [x2, y2] = P(0, g.ridge + g.prof/2 + 0.25); ln(x1, y1, x2, y2); });
+    // eixos A/B
+    lw(0.12, GRAY); dash([4, 1, 0.6, 1]);
+    [-1, 1].forEach(s => { const [x, y1] = P(s*g.half, g.ridge + 0.8), [, y2] = P(s*g.half, -0.6); ln(x, y1, x, y2); });
+    dash();
+    bubble(...P(-g.half, -0.6).map((v,i) => i ? v + 3 : v), "A");
+    bubble(...P(g.half, -0.6).map((v,i) => i ? v + 3 : v), "B");
+    // cotas
+    { const [xa] = P(-g.half, 0), [xb] = P(g.half, 0); dimH(xa, xb, gy + 13, `${m2(g.W)} m`, gy + 6); }
+    { const [x, ya] = P(-g.half - 2, g.H), [, yb] = P(-g.half - 2, 0); dimV(ya, yb, x - 3, `pé-direito ${m2(g.H)} m`, P(-g.half,0)[0] - g.prof*k); }
+    { const [x, ya] = P(g.half + 2, g.ridge), [, yb] = P(g.half + 2, 0); dimV(ya, yb, x + 4, `cumeeira ${m2(g.ridge)} m`, P(0,0)[0], true); }
+    { const [x, y] = P(g.half*0.5, g.H + g.half*0.5*g.S + d + 0.6); font(7.5, true); txt(`i = ${g.Sp}%`, x, y, {align:"center"}); }
+    { const [x, y] = P(g.half + wallOff + 0.3, 0.6); font(6.5, false, [90,96,125]); txt("mureta 1,20 m", x + 1, y); }
+  }
+
+  // --- Vista lateral ---
+  {
+    const bx = 16, by = 178, bw = 240, bh = 106;
+    const n = pickScale(g.L + 8, g.ridge + 6, bw - 10, bh - 32);
+    const k = 1000/n;
+    viewTitle(bx, by + 4, "VISTA LATERAL - FILA A", n);
+    const cx = bx + bw/2, gy = by + bh - 24;
+    const P = (z, y) => [cx + z*k, gy - y*k];
+    lw(0.35); { const [x1] = P(-g.L/2 - 2.5, 0), [x2] = P(g.L/2 + 2.5, 0); ln(x1, gy, x2, gy); lw(0.12, GRAY); for(let x = x1; x < x2; x += 2.5) ln(x, gy, x - 1.5, gy + 1.5); }
+    // mureta
+    { const [x1, y1] = P(-g.L/2 - wallOff, 1.2); lw(0.25); doc.rect(x1, y1, (g.L + 2*wallOff)*k, 1.2*k); hatchRect(x1, y1, (g.L + 2*wallOff)*k, 1.2*k, 2.2); }
+    // pilares
+    zs.forEach((z, i) => {
+      const [x1, y1] = P(z - g.prof*0.25, g.H); lw(0.35); doc.rect(x1, y1, Math.max(0.9, g.prof*0.5*k), (g.H - 0.2)*k);
+      const [bxp, byp] = P(z - g.prof*0.4, 0.2); lw(0.25); doc.rect(bxp, byp, g.prof*0.8*k, 0.2*k);
+      const [tx, ty] = P(z, -0.6); bubble(tx, ty + 3, String(i+1));
+    });
+    // viga de beiral e cumeeira (oculta)
+    lw(0.35); { const [x1, y] = P(-g.L/2, g.H), [x2] = P(g.L/2, g.H); ln(x1, y, x2, y); }
+    lw(0.2, GRAY); dash([2, 1]); { const [x1, y] = P(-g.L/2, g.ridge), [x2] = P(g.L/2, g.ridge); ln(x1, y, x2, y); } dash();
+    font(6.5, false, [90,96,125]); { const [x, y] = P(g.L/2, g.ridge); txt("cumeeira", x + 1.5, y + 1); }
+    // travessas
+    lw(0.25); g.girtY.forEach(y => { const [x1, py] = P(-g.L/2, y), [x2] = P(g.L/2, y); ln(x1, py, x2, py); });
+    // contraventos
+    lw(0.2); [[zs[0], zs[1]], [zs[g.nF-2], zs[g.nF-1]]].forEach(([za, zb]) => {
+      const [a1, a2] = P(za, 0.4), [b1, b2] = P(zb, g.H - 0.4); ln(a1, a2, b1, b2);
+      const [c1, c2] = P(zb, 0.4), [d1, d2] = P(za, g.H - 0.4); ln(c1, c2, d1, d2);
+    });
+    // cotas
+    for(let i=0;i<g.nF-1;i++){ const [xa] = P(zs[i], 0), [xb] = P(zs[i+1], 0); dimH(xa, xb, gy + 13, `${m2(g.bay)}`, gy + 7); }
+    { const [xa] = P(-g.L/2, 0), [xb] = P(g.L/2, 0); dimH(xa, xb, gy + 20, `${m2(g.L)} m`, gy + 7); }
+    { const [x, ya] = P(-g.L/2 - 1.2, g.H), [, yb] = P(-g.L/2 - 1.2, 0); dimV(ya, yb, x - 4, `${m2(g.H)} m`, P(-g.L/2,0)[0]); }
+  }
+
+  // --- Carimbo ---
+  {
+    const x = 266, y = 178, w = 140, h = 106;
+    lw(0.4); doc.rect(x, y, w, h);
+    font(11, true); txt("GALPÃO METÁLICO EM PÓRTICOS", x + 4, y + 8);
+    font(8, false, [90,96,125]); txt("Estudo preliminar para orçamento", x + 4, y + 13);
+    lw(0.2); ln(x, y + 16, x + w, y + 16);
+    const rows = [
+      ["Largura (vão livre)", `${m2(g.W)} m`],
+      ["Comprimento", `${m2(g.L)} m`],
+      ["Pé-direito", `${m2(g.H)} m`],
+      ["Altura da cumeeira", `${m2(g.ridge)} m`],
+      ["Inclinação do telhado", `${g.Sp}%`],
+      ["Pórticos", `${g.nF} un. a cada ${m2(g.bay)} m`],
+      ["Área coberta", `${m2(g.W*g.L)} m²`]
+    ];
+    rows.forEach((r, i) => { const yy = y + 21.5 + i*5.2; font(8, false, [90,96,125]); txt(r[0], x + 4, yy); font(8.5, true); txt(r[1], x + w - 4, yy, {align:"right"}); });
+    let yy = y + 21.5 + rows.length*5.2 + 1;
+    lw(0.2); ln(x, yy - 2.5, x + w, yy - 2.5);
+    [["Cliente", ""], ["Local da obra", ""], ["Responsável", ""], ["Nº do orçamento", ""], ["Data", today]].forEach((r, i) => {
+      const ry = yy + 3 + i*6.2;
+      font(7.5, false, [90,96,125]); txt(r[0] + ":", x + 4, ry);
+      lw(0.15, GRAY); ln(x + 34, ry + 0.8, x + w - 4, ry + 0.8);
+      if(r[1]){ font(8.5, true); txt(r[1], x + 36, ry); }
+    });
+    font(6.2, false, [90,96,125]);
+    txt("Medidas em metros. Desenho de estudo: perfis, ligações e fundações", x + 4, y + h - 6);
+    txt("devem ser dimensionados por engenheiro responsável (com ART).", x + 4, y + h - 3);
+  }
+
+  // ===== Folha 2: lista de materiais =====
+  doc.addPage("a3", "landscape");
+  frame(2, 2);
+  font(14, true); txt("LISTA DE MATERIAIS E QUANTITATIVOS", 16, 22);
+  font(9, false, [90,96,125]); txt(`Galpão ${m2(g.W)} x ${m2(g.L)} m · pé-direito ${m2(g.H)} m · inclinação ${g.Sp}% · ${g.nF} pórticos a cada ${m2(g.bay)} m · ${today}`, 16, 28);
+
+  const roofArea = 2*g.slopeLen*(g.L + 0.8);
+  const wallLen = 2*(g.W + 2*wallOff) + 2*(g.L + 2*wallOff);
+  const items = [
+    ["Pilares (perfil I, aço pintado)", 2*g.nF, "pç", g.H, "m"],
+    ["Vigas de cobertura (meia-água)", 2*g.nF, "pç", g.rafter, "m"],
+    ["Mísulas / reforço do joelho", 2*g.nF, "pç", g.haunch, "m"],
+    ["Terças galvanizadas", 2*g.nPside, "pç", g.L + 0.3, "m"],
+    ["Travessas laterais (longarinas)", 2*g.girtY.length, "pç", g.L, "m"],
+    ["Contraventamento em X (barra redonda)", 8, "pç", g.brace, "m"],
+    ["Chapas de base + chumbadores", 2*g.nF, "cj", null, ""],
+    ["Fundações (sapatas / blocos)", 2*g.nF, "un", null, ""],
+    ["Telhas da cobertura (com beiral de 0,40 m)", 1, "vb", roofArea, "m²"],
+    ["Cumeeira (rufo)", 1, "vb", g.L + 0.8, "m"],
+    ["Mureta pré-moldada h = 1,20 m", 1, "vb", wallLen*1.2, "m²"],
+    ["Piso interno", 1, "vb", g.W*g.L, "m²"]
+  ];
+  const cols = [
+    {t:"Item", w:14, a:"center"}, {t:"Descrição", w:118, a:"left"}, {t:"Qtd", w:20, a:"right"}, {t:"Un", w:14, a:"center"},
+    {t:"Medida unit.", w:34, a:"right"}, {t:"Total", w:38, a:"right"}, {t:"Preço unit. (R$)", w:46, a:"right"}, {t:"Total (R$)", w:46, a:"right"}
+  ];
+  const tx0 = 16; let ty = 36; const rh = 9;
+  const tw = cols.reduce((s,c) => s + c.w, 0);
+  doc.setFillColor(236,238,246); doc.rect(tx0, ty, tw, rh, "F");
+  lw(0.3); doc.rect(tx0, ty, tw, rh);
+  let cx0 = tx0; font(8, true);
+  cols.forEach(c => { const xx = c.a === "right" ? cx0 + c.w - 2 : c.a === "center" ? cx0 + c.w/2 : cx0 + 2; txt(c.t, xx, ty + 6, {align:c.a}); cx0 += c.w; });
+  ty += rh;
+  items.forEach((it, i) => {
+    const qty = it[1], unitMeas = it[3], total = unitMeas == null ? null : (it[2] === "vb" ? unitMeas : qty*unitMeas);
+    const vals = [String(i+1), it[0], String(qty), it[2],
+      unitMeas == null ? "-" : (it[2] === "vb" ? "-" : `${m2(unitMeas)} ${it[4]}`),
+      total == null ? "-" : `${m2(total)} ${it[4]}`, "", ""];
+    if(i % 2) { doc.setFillColor(248,249,252); doc.rect(tx0, ty, tw, rh, "F"); }
+    lw(0.12, LIGHT); ln(tx0, ty + rh, tx0 + tw, ty + rh);
+    let xx = tx0;
+    cols.forEach((c, j) => {
+      font(8.5, j === 5);
+      const px = c.a === "right" ? xx + c.w - 2 : c.a === "center" ? xx + c.w/2 : xx + 2;
+      if(vals[j]) txt(vals[j], px, ty + 6, {align:c.a});
+      xx += c.w;
+    });
+    ty += rh;
+  });
+  // linhas de colunas
+  lw(0.3); doc.rect(tx0, 36, tw, ty - 36);
+  let vx = tx0; lw(0.12, LIGHT); cols.slice(0, -1).forEach(c => { vx += c.w; ln(vx, 36, vx, ty); });
+  // total geral
+  doc.setFillColor(236,238,246); doc.rect(tx0, ty, tw, rh, "F"); lw(0.3); doc.rect(tx0, ty, tw, rh);
+  font(9, true); txt("TOTAL GERAL", tx0 + tw - 46 - 4, ty + 6, {align:"right"});
+  lw(0.15, GRAY); ln(tx0 + tw - 44, ty + 7, tx0 + tw - 3, ty + 7);
+  ty += rh + 8;
+
+  // Resumo de aço linear
+  const steelLines = [
+    ["Perfis I (pilares + vigas + mísulas)", 2*g.nF*(g.H + g.rafter + g.haunch)],
+    ["Terças galvanizadas", 2*g.nPside*(g.L + 0.3)],
+    ["Travessas laterais", 2*g.girtY.length*g.L],
+    ["Contraventos", 8*g.brace]
+  ];
+  font(10, true); txt("Resumo de metragem linear", 16, ty);
+  steelLines.forEach((r, i) => { font(8.5, false, [90,96,125]); txt(r[0], 16, ty + 7 + i*5.5); font(8.5, true); txt(`${m2(r[1])} m`, 120, ty + 7 + i*5.5, {align:"right"}); });
+
+  // Observações
+  const ox = 140;
+  font(10, true); txt("Observações da equipe", ox, ty);
+  lw(0.15, GRAY); for(let i=0;i<5;i++) ln(ox, ty + 8 + i*7, ox + 120, ty + 8 + i*7);
+
+  font(7, false, [90,96,125]);
+  txt("Quantidades calculadas a partir do modelo 3D nas medidas escolhidas. Comprimentos sem perdas, emendas ou sobras.", 16, 278);
+  txt("Pé-direito, espaçamento entre pórticos e inclinação podem ter sido estimados. Confirme as medidas com o cliente antes de fechar o orçamento.", 16, 282);
+
+  // Perspectiva ilustrativa
+  try{
+    renderer.render(scene, camera);
+    const src = canvas;
+    const tmp = document.createElement("canvas");
+    const sw = 900, sh = Math.round(900 * src.height / src.width);
+    tmp.width = sw; tmp.height = sh;
+    const c2 = tmp.getContext("2d"); c2.fillStyle = "#ffffff"; c2.fillRect(0,0,sw,sh); c2.drawImage(src, 0, 0, sw, sh);
+    const img = tmp.toDataURL("image/jpeg", 0.85);
+    const iw = 130, ih = iw * sh / sw, ix = 410 - 4 - iw, iy = Math.max(ty - 6, 287 - 16 - ih);
+    if(iy + ih < 272){ doc.addImage(img, "JPEG", ix, iy, iw, ih); lw(0.2, LIGHT); doc.rect(ix, iy, iw, ih); font(7, false, [90,96,125]); txt("Perspectiva ilustrativa", ix, iy - 1.5); }
+  }catch(e){ /* sem imagem */ }
+
+  return {doc, name: `galpao-${String(g.W).replace(".", ",")}x${String(g.L).replace(".", ",")}m-projeto.pdf`};
+}
+
+const pdfBtn = document.getElementById("pdfBtn"), pdfMsg = document.getElementById("pdfMsg");
+const pdfView = document.getElementById("pdfView"), pdfFrame = document.getElementById("pdfFrame");
+let pdfUrl = null;
+document.getElementById("pdfClose").addEventListener("click", () => { pdfView.hidden = true; pdfFrame.removeAttribute("src"); if(pdfUrl){ URL.revokeObjectURL(pdfUrl); pdfUrl = null; } });
+pdfBtn.addEventListener("click", async () => {
+  if(!curCfg) return;
+  if(!window.jspdf){ pdfMsg.textContent = "Não foi possível carregar o gerador de PDF. Recarregue a página e tente de novo."; return; }
+  pdfBtn.disabled = true; pdfMsg.textContent = "Gerando o projeto…";
+  let out;
+  try { out = buildPdf(curCfg); }
+  catch(e){ pdfBtn.disabled = false; pdfMsg.textContent = "Erro ao montar o PDF. Tente outras medidas ou recarregue a página."; return; }
+  const blob = out.doc.output("blob");
+  let dl = null;
+  try { dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch(e){ dl = null; }
+  if(dl){
+    try {
+      await dl.save({filename: out.name, data: blob});
+      pdfMsg.textContent = `Projeto salvo: ${out.name}`;
+    } catch(err){
+      const code = err && err.code;
+      if(code === "declined") pdfMsg.textContent = "Download cancelado.";
+      else if(code === "rate_limited") pdfMsg.textContent = "Já existe um download aguardando confirmação.";
+      else { openPreview(blob); pdfMsg.textContent = "Download indisponível aqui; abri a prévia do PDF."; }
+    }
+  } else if(!window.claude){
+    // Fora do Claude (no seu site): download direto pelo navegador
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = out.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    pdfMsg.textContent = `Projeto baixado: ${out.name}`;
+  } else {
+    openPreview(blob);
+    pdfMsg.textContent = "Prévia aberta. Salve pelo visualizador de PDF.";
+  }
+  pdfBtn.disabled = false;
+});
+function openPreview(blob){
+  if(pdfUrl) URL.revokeObjectURL(pdfUrl);
+  pdfUrl = URL.createObjectURL(blob);
+  pdfFrame.src = pdfUrl; pdfView.hidden = false;
+}
+
+// ---------- Orçamento pelo WhatsApp ----------
+const SITE = {
+  whatsapp: "5548996892573",          // WhatsApp da Inbrasfer (DDI + DDD + número)
+  // Onde guardar o PDF e gerar o link:
+  //  - Hospedagem com PHP: "api/salvar-pdf.php"
+  //  - Blogger: URL do Apps Script (termina em /exec), que salva no Google Drive da empresa
+  uploadUrl: "COLE_AQUI_A_URL_DO_APPS_SCRIPT"
+};
+const params = new URLSearchParams(location.search);
+if(params.get("embed") === "1") document.documentElement.classList.add("embed");
+if(params.get("equipe") === "1") document.getElementById("pdfBtn").hidden = false;
+
+function blobToBase64(blob){
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(blob); });
+}
+async function uploadPdf(blob, name){
+  if(!SITE.uploadUrl || SITE.uploadUrl.indexOf("COLE_AQUI") === 0) return null;
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 20000);
+  try{
+    let r;
+    if(/\/exec(\?|$)/.test(SITE.uploadUrl)){
+      const body = JSON.stringify({name, data: await blobToBase64(blob)});
+      r = await fetch(SITE.uploadUrl, {method:"POST", body, headers:{"Content-Type":"text/plain;charset=utf-8"}, signal:ctrl.signal});
+    } else {
+      const fd = new FormData(); fd.append("pdf", blob, name);
+      r = await fetch(SITE.uploadUrl, {method:"POST", body:fd, signal:ctrl.signal});
+    }
+    if(!r.ok) return null;
+    const j = await r.json();
+    return j && typeof j.url === "string" && /^https?:\/\//.test(j.url) ? j.url : null;
+  }catch(e){ return null; }
+  finally{ clearTimeout(t); }
+}
+function waMessage(cfg, url){
+  const g = geom(cfg);
+  const lines = [
+    "Olá, Inbrasfer! Quero um orçamento deste galpão:",
+    `• Largura (vão): ${m2(g.W)} m`,
+    `• Comprimento: ${m2(g.L)} m`,
+    `• Pé-direito: ${m2(g.H)} m`,
+    `• Pórticos: ${g.nF}, a cada ${m2(g.bay)} m`,
+    `• Inclinação do telhado: ${g.Sp}%`,
+    `• Área coberta: ${m2(g.W*g.L)} m²`
+  ];
+  lines.push(url ? `Projeto em PDF: ${url}` : "Fiz a simulação no site de vocês.");
+  return lines.join("\n");
+}
+const waBtn = document.getElementById("waBtn");
+waBtn.addEventListener("click", async () => {
+  if(!curCfg) return;
+  waBtn.disabled = true;
+  pdfMsg.textContent = "Preparando o projeto…";
+  // abre a aba já no clique para o navegador não bloquear
+  let win = null;
+  try { win = window.open("", "_blank"); if(win) win.document.write('<p style="font:16px sans-serif;padding:24px">Abrindo o WhatsApp…</p>'); } catch(e){ win = null; }
+  let url = null;
+  try {
+    if(window.jspdf){ const out = buildPdf(curCfg); url = await uploadPdf(out.doc.output("blob"), out.name); }
+  } catch(e){ url = null; }
+  const link = `https://wa.me/${SITE.whatsapp}?text=${encodeURIComponent(waMessage(curCfg, url))}`;
+  if(win && !win.closed){ win.location.href = link; pdfMsg.textContent = "WhatsApp aberto. É só tocar em enviar."; }
+  else {
+    pdfMsg.innerHTML = "";
+    const a = document.createElement("a"); a.href = link; a.target = "_blank"; a.rel = "noopener"; a.textContent = "Abrir o WhatsApp com a mensagem pronta";
+    pdfMsg.appendChild(a);
+  }
+  waBtn.disabled = false;
+});
+function postHeight(){ if(parent !== window) parent.postMessage({type:"inb-height", h: document.documentElement.scrollHeight}, "*"); }
+addEventListener("load", postHeight); addEventListener("resize", () => setTimeout(postHeight, 150)); setTimeout(postHeight, 600);
+
+// ---------- Loop ----------
+function resize(){
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const pr = renderer.getPixelRatio();
+  if(canvas.width !== Math.floor(w*pr) || canvas.height !== Math.floor(h*pr)){
+    renderer.setSize(w, h, false);
+    camera.aspect = w/h; camera.updateProjectionMatrix();
+  }
+}
+let last = performance.now();
+function loop(now){
+  const dt = Math.min(0.05, (now-last)/1000); last = now;
+  resize();
+  animateParts(now);
+  if(!reduce){
+    const a = floatGeo.attributes.position;
+    for(let i=0;i<floatN;i++){
+      let y = a.getY(i) + fSpd[i]*dt;
+      if(y > 30) y = 0;
+      a.setY(i, y);
+    }
+    a.needsUpdate = true;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+
+const start = () => {
+  const cfg = Object.assign({}, SIZES[current]);
+  fill(cfg); build(cfg, true); frameCamera(cfg);
+  requestAnimationFrame(loop);
+};
+if(document.fonts && document.fonts.load){
+  Promise.all([document.fonts.load('500 56px "JetBrains Mono"')]).then(start, start);
+} else start();
+})();
+</script>
+
+</body>
+</html>
